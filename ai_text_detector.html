@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RabinScope — AI Text Detector</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --panel: #16161f;
+    --border: #2a2a3a;
+    --accent: #00e5ff;
+    --warn: #ff4d6d;
+    --safe: #00ffa3;
+    --mid: #ffd166;
+    --text: #e8e8f0;
+    --muted: #6b6b85;
+    --glow: rgba(0,229,255,0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative; z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px 60px;
+  }
+
+  /* Header */
+  header {
+    padding: 40px 0 32px;
+    display: flex; align-items: flex-end; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+  }
+
+  .logo-area { display: flex; flex-direction: column; gap: 4px; }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 2.4rem;
+    color: var(--accent);
+    letter-spacing: -1px;
+    text-shadow: 0 0 40px rgba(0,229,255,0.4);
+  }
+
+  .logo span { color: var(--text); }
+
+  .tagline {
+    font-size: 0.7rem;
+    color: var(--muted);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .badge {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* Main grid */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+
+  @media (max-width: 720px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .logo { font-size: 1.8rem; }
+  }
+
+  /* Panels */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 0;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+
+  .panel:hover { border-color: var(--accent); }
+
+  .panel-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--panel);
+  }
+
+  .panel-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .panel-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--border);
+  }
+
+  .panel-dot.human { background: var(--safe); box-shadow: 0 0 8px var(--safe); }
+  .panel-dot.ai { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+
+  textarea {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.78rem;
+    line-height: 1.7;
+    padding: 18px;
+    resize: none;
+    height: 200px;
+  }
+
+  textarea::placeholder { color: var(--muted); font-style: italic; }
+
+  /* Config row */
+  .config-row {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 16px 20px;
+    margin-bottom: 20px;
+  }
+
+  .config-label {
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+
+  .config-control {
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100px; height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  .range-val {
+    font-size: 0.75rem;
+    color: var(--accent);
+    min-width: 20px;
+    text-align: center;
+  }
+
+  /* Analyze button */
+  .analyze-btn {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 12px 32px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.8rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .analyze-btn::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: var(--accent);
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    z-index: -1;
+  }
+
+  .analyze-btn:hover {
+    color: var(--bg);
+    box-shadow: 0 0 24px var(--glow);
+  }
+
+  .analyze-btn:hover::before { transform: translateX(0); }
+
+  .analyze-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .analyze-btn:disabled::before { display: none; }
+
+  /* Results area */
+  #results { display: none; }
+
+  /* Verdict banner */
+  .verdict-banner {
+    padding: 28px 28px;
+    border: 1px solid var(--border);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    background: var(--surface);
+    animation: fadeIn 0.5s ease;
+  }
+
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .verdict-score {
+    font-family: 'Syne', sans-serif;
+    font-size: 4rem;
+    font-weight: 800;
+    line-height: 1;
+    min-width: 120px;
+  }
+
+  .verdict-info { flex: 1; }
+
+  .verdict-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .verdict-desc {
+    font-size: 0.72rem;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .ai-score { color: var(--warn); }
+  .human-score { color: var(--safe); }
+  .mid-score { color: var(--mid); }
+
+  /* Score bar */
+  .score-bar-wrap {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 18px 20px;
+    margin-bottom: 20px;
+    animation: fadeIn 0.5s ease 0.1s both;
+  }
+
+  .score-bar-label {
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex; justify-content: space-between;
+  }
+
+  .score-bar-track {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+
+  .score-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 0%;
+  }
+
+  .score-bar-ticks {
+    display: flex; justify-content: space-between;
+    font-size: 0.6rem; color: var(--muted);
+  }
+
+  /* Metrics grid */
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+    animation: fadeIn 0.5s ease 0.15s both;
+  }
+
+  @media (max-width: 720px) {
+    .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .metric-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 16px;
+  }
+
+  .metric-val {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+
+  .metric-name {
+    font-size: 0.6rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+  }
+
+  /* Comparison table */
+  .compare-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+    animation: fadeIn 0.5s ease 0.2s both;
+  }
+
+  @media (max-width: 720px) {
+    .compare-section { grid-template-columns: 1fr; }
+  }
+
+  .compare-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .compare-card-title {
+    padding: 10px 16px;
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--muted);
+  }
+
+  .hash-list {
+    padding: 12px;
+    display: flex; flex-wrap: wrap; gap: 6px;
+    max-height: 140px; overflow-y: auto;
+  }
+
+  .hash-tag {
+    padding: 3px 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    font-size: 0.62rem;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+
+  .hash-tag.repeated {
+    border-color: var(--warn);
+    color: var(--warn);
+    background: rgba(255,77,109,0.08);
+  }
+
+  /* Top repeated ngrams */
+  .ngrams-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    margin-bottom: 20px;
+    animation: fadeIn 0.5s ease 0.25s both;
+  }
+
+  .ngrams-row {
+    display: flex; align-items: center;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
+  }
+
+  .ngrams-row:last-child { border-bottom: none; }
+
+  .ngram-text {
+    flex: 1;
+    font-size: 0.75rem;
+    color: var(--text);
+  }
+
+  .ngram-bar-wrap { flex: 1; }
+  .ngram-bar {
+    height: 4px;
+    background: var(--warn);
+    border-radius: 2px;
+    max-width: 100%;
+  }
+
+  .ngram-count {
+    font-size: 0.7rem;
+    color: var(--warn);
+    min-width: 32px;
+    text-align: right;
+  }
+
+  /* How it works */
+  .howto {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+
+  .howto-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+
+  @media (max-width: 720px) { .steps { grid-template-columns: 1fr 1fr; } }
+
+  .step {
+    border-left: 2px solid var(--border);
+    padding-left: 12px;
+  }
+
+  .step-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: var(--border);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .step-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .step-desc {
+    font-size: 0.62rem;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  /* Python code panel */
+  .code-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .code-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+
+  .code-tab {
+    padding: 10px 18px;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+  }
+
+  .code-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .code-panel { display: none; }
+  .code-panel.active { display: block; }
+
+  pre {
+    padding: 20px;
+    font-size: 0.7rem;
+    line-height: 1.8;
+    overflow-x: auto;
+    color: #c9d1d9;
+  }
+
+  .kw { color: #ff79c6; }
+  .fn { color: #61dafb; }
+  .str { color: #f1fa8c; }
+  .cm { color: #6b6b85; font-style: italic; }
+  .num { color: #bd93f9; }
+  .cls { color: #50fa7b; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: var(--border); }
+  ::-webkit-scrollbar-thumb { background: var(--muted); }
+
+  .flex-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+  .separator { flex: 1; height: 1px; background: var(--border); }
+
+  .info-icon {
+    color: var(--muted); font-size: 0.65rem; cursor: help;
+    border: 1px solid var(--border); padding: 1px 5px;
+  }
+
+  input[type=number] {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    width: 60px;
+    outline: none;
+  }
+
+  input[type=number]:focus { border-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo-area">
+      <div class="logo">Rabin<span>Scope</span></div>
+      <div class="tagline">Rolling-Hash AI Text Detector · Rabin-Karp Algorithm</div>
+    </div>
+    <div class="badge">v1.0 · Browser Demo</div>
+  </header>
+
+  <!-- How it works -->
+  <div class="howto">
+    <div class="howto-title">// Algorithm Pipeline</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">01</div>
+        <div class="step-title">Tokenize</div>
+        <div class="step-desc">Normalize, lowercase, strip punctuation and split into word tokens.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <div class="step-title">N-Gram Sliding Window</div>
+        <div class="step-desc">Extract overlapping word groups of size n using a sliding window over tokens.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <div class="step-title">Rabin-Karp Rolling Hash</div>
+        <div class="step-desc">Generate a polynomial rolling hash for each n-gram; reuse prior computation to avoid O(n²).</div>
+      </div>
+      <div class="step">
+        <div class="step-num">04</div>
+        <div class="step-title">Repetition Analysis</div>
+        <div class="step-desc">Count collision rate, unique ratio, and top repeated patterns to score AI likelihood.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Text inputs -->
+  <div class="main-grid">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Human-Written Sample</span>
+        <span class="panel-dot human"></span>
+      </div>
+      <textarea id="humanText" placeholder="Paste a human-written essay or text sample here…
+
+Example: a personal essay, student writing, casual blog post, or any organic human prose."></textarea>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">AI-Generated Sample</span>
+        <span class="panel-dot ai"></span>
+      </div>
+      <textarea id="aiText" placeholder="Paste an AI-generated text sample here…
+
+Example: output from ChatGPT, Claude, Gemini, or similar language models."></textarea>
+    </div>
+  </div>
+
+  <!-- Target text -->
+  <div class="panel" style="margin-bottom:20px;">
+    <div class="panel-header">
+      <span class="panel-title">Target Text — Classify This</span>
+      <span class="panel-dot" style="background:var(--accent);box-shadow:0 0 8px var(--accent);"></span>
+    </div>
+    <textarea id="targetText" style="height:150px;" placeholder="Paste the unknown text you want to classify here. The system will compare its hash pattern fingerprint against both samples to estimate whether it was written by a human or generated by AI."></textarea>
+  </div>
+
+  <!-- Config -->
+  <div class="config-row">
+    <span class="config-label">N-gram size:</span>
+    <div class="config-control">
+      <input type="range" id="ngramSize" min="2" max="6" value="3">
+      <span class="range-val" id="ngramVal">3</span>
+    </div>
+    <div class="separator"></div>
+    <span class="config-label">Hash base:</span>
+    <div class="config-control">
+      <input type="number" id="hashBase" value="31" min="2" max="9999">
+    </div>
+    <span class="config-label">Modulus:</span>
+    <div class="config-control">
+      <input type="number" id="hashMod" value="100003" min="100" max="9999999">
+    </div>
+    <div class="separator"></div>
+    <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis()">▶ ANALYZE</button>
+  </div>
+
+  <!-- Results -->
+  <div id="results">
+    <div class="verdict-banner" id="verdictBanner">
+      <div class="verdict-score" id="verdictScore">—</div>
+      <div class="verdict-info">
+        <div class="verdict-label" id="verdictLabel">Running analysis…</div>
+        <div class="verdict-desc" id="verdictDesc"></div>
+      </div>
+    </div>
+
+    <div class="score-bar-wrap">
+      <div class="score-bar-label">
+        <span>HUMAN</span>
+        <span>AI LIKELIHOOD SCORE</span>
+        <span>AI</span>
+      </div>
+      <div class="score-bar-track">
+        <div class="score-bar-fill" id="scoreBarFill"></div>
+      </div>
+      <div class="score-bar-ticks">
+        <span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+      </div>
+    </div>
+
+    <div class="metrics-grid" id="metricsGrid"></div>
+
+    <div class="compare-section">
+      <div class="compare-card">
+        <div class="compare-card-title">Human sample — hash fingerprint (top 40)</div>
+        <div class="hash-list" id="humanHashes"></div>
+      </div>
+      <div class="compare-card">
+        <div class="compare-card-title">AI sample — hash fingerprint (top 40)</div>
+        <div class="hash-list" id="aiHashes"></div>
+      </div>
+    </div>
+
+    <div class="ngrams-section" id="ngramsSection">
+      <div class="panel-header">
+        <span class="panel-title">Top Repeated N-Grams in Target Text</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Code tabs -->
+  <div class="code-section" style="margin-top:20px;">
+    <div class="code-tabs">
+      <div class="code-tab active" onclick="switchTab('algo')">rabin_karp.py</div>
+      <div class="code-tab" onclick="switchTab('detector')">detector.py</div>
+      <div class="code-tab" onclick="switchTab('usage')">usage.py</div>
+    </div>
+
+    <div class="code-panel active" id="tab-algo">
+<pre>
+<span class="cm"># ── Rabin-Karp Rolling Hash Implementation ──────────────────────────────────</span>
+<span class="cm"># Uses polynomial rolling hash to efficiently hash text n-grams.</span>
+<span class="cm"># Each new hash is computed in O(1) by "rolling" off the old character.</span>
+
+<span class="kw">class</span> <span class="cls">RollingHash</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, base=<span class="num">31</span>, mod=<span class="num">100_003</span>):
+        self.base = base          <span class="cm"># polynomial base (usually prime)</span>
+        self.mod  = mod           <span class="cm"># large prime modulus to avoid overflow</span>
+
+    <span class="kw">def</span> <span class="fn">hash_ngram</span>(self, tokens: list[str]) -> int:
+        <span class="str">"""Compute polynomial hash for a list of word tokens."""</span>
+        h = <span class="num">0</span>
+        <span class="kw">for</span> i, token <span class="kw">in</span> enumerate(tokens):
+            token_val = self.<span class="fn">_str_hash</span>(token)
+            h = (h + token_val * pow(self.base, i, self.mod)) % self.mod
+        <span class="kw">return</span> h
+
+    <span class="kw">def</span> <span class="fn">_str_hash</span>(self, s: str) -> int:
+        <span class="str">"""Simple polynomial hash for a single word."""</span>
+        h = <span class="num">0</span>
+        <span class="kw">for</span> ch <span class="kw">in</span> s:
+            h = (h * <span class="num">31</span> + ord(ch)) % self.mod
+        <span class="kw">return</span> h + <span class="num">1</span>   <span class="cm"># +1 avoids zero multiplication</span>
+
+    <span class="kw">def</span> <span class="fn">rolling_hash_all</span>(self, tokens: list[str], n: int) -> list[int]:
+        <span class="str">"""
+        Generate hash values for all n-grams using the sliding window.
+        Rolling update: remove contribution of outgoing token, shift,
+        add contribution of incoming token — O(1) per step.
+        """</span>
+        <span class="kw">if</span> len(tokens) < n:
+            <span class="kw">return</span> []
+
+        token_hashes = [self.<span class="fn">_str_hash</span>(t) <span class="kw">for</span> t <span class="kw">in</span> tokens]
+        base_pow_n   = pow(self.base, n - <span class="num">1</span>, self.mod)
+
+        <span class="cm"># Compute first window</span>
+        h = <span class="num">0</span>
+        <span class="kw">for</span> i <span class="kw">in</span> range(n):
+            h = (h + token_hashes[i] * pow(self.base, i, self.mod)) % self.mod
+        hashes = [h]
+
+        <span class="cm"># Roll the window</span>
+        <span class="kw">for</span> i <span class="kw">in</span> range(<span class="num">1</span>, len(tokens) - n + <span class="num">1</span>):
+            h = (h - token_hashes[i - <span class="num">1</span>]) % self.mod  <span class="cm"># remove old head</span>
+            h = (h * pow(self.base, <span class="num">-1</span>, self.mod)) % self.mod <span class="cm"># shift right</span>
+            h = (h + token_hashes[i + n - <span class="num">1</span>] * base_pow_n) % self.mod <span class="cm"># add new tail</span>
+            hashes.append(h)
+
+        <span class="kw">return</span> hashes
+</pre>
+    </div>
+
+    <div class="code-panel" id="tab-detector">
+<pre>
+<span class="cm"># ── AI Text Detector ─────────────────────────────────────────────────────────</span>
+<span class="kw">import</span> re
+<span class="kw">from</span> collections <span class="kw">import</span> Counter
+<span class="kw">from</span> rabin_karp <span class="kw">import</span> RollingHash
+
+<span class="kw">def</span> <span class="fn">preprocess</span>(text: str) -> list[str]:
+    <span class="str">"""Lowercase, remove punctuation, split into word tokens."""</span>
+    text = text.lower()
+    text = re.sub(r<span class="str">"[^a-z0-9\s]"</span>, <span class="str">""</span>, text)
+    <span class="kw">return</span> text.split()
+
+<span class="kw">def</span> <span class="fn">compute_fingerprint</span>(text: str, n=<span class="num">3</span>, base=<span class="num">31</span>, mod=<span class="num">100_003</span>) -> dict:
+    <span class="str">"""
+    Build a hash fingerprint for a text sample.
+    Returns:
+      - hashes      : all rolling hash values
+      - counts      : Counter of hash → frequency
+      - unique_ratio: unique hashes / total hashes
+      - repeat_rate : fraction of hashes that appear >1 time
+      - top_ngrams  : most repeated n-gram strings
+    """</span>
+    rh     = <span class="cls">RollingHash</span>(base, mod)
+    tokens = <span class="fn">preprocess</span>(text)
+    hashes = rh.<span class="fn">rolling_hash_all</span>(tokens, n)
+
+    <span class="kw">if not</span> hashes:
+        <span class="kw">return</span> {}
+
+    counts       = <span class="cls">Counter</span>(hashes)
+    unique_ratio = len(counts) / len(hashes)
+    repeated     = sum(<span class="num">1</span> <span class="kw">for</span> c <span class="kw">in</span> counts.values() <span class="kw">if</span> c > <span class="num">1</span>)
+    repeat_rate  = repeated / len(counts)
+
+    <span class="cm"># Map hashes back to their n-gram strings</span>
+    ngram_texts = [<span class="str">" "</span>.join(tokens[i:i+n]) <span class="kw">for</span> i <span class="kw">in</span> range(len(tokens)-n+<span class="num">1</span>)]
+    ngram_count = <span class="cls">Counter</span>(ngram_texts)
+    top_ngrams  = ngram_count.most_common(<span class="num">10</span>)
+
+    <span class="kw">return</span> dict(
+        hashes=hashes, counts=counts,
+        unique_ratio=unique_ratio, repeat_rate=repeat_rate,
+        top_ngrams=top_ngrams, total=len(hashes),
+        unique=len(counts),
+    )
+
+<span class="kw">def</span> <span class="fn">score_ai_likelihood</span>(target_fp, human_fp, ai_fp) -> float:
+    <span class="str">"""
+    Score 0–1: 0 = very human-like, 1 = very AI-like.
+    Strategy: AI text has higher repeat_rate and lower unique_ratio
+    compared to human text. We interpolate the target's position.
+    """</span>
+    <span class="cm"># Feature deltas</span>
+    human_rr = human_fp[<span class="str">"repeat_rate"</span>]
+    ai_rr    = ai_fp[<span class="str">"repeat_rate"</span>]
+    tgt_rr   = target_fp[<span class="str">"repeat_rate"</span>]
+
+    human_ur = human_fp[<span class="str">"unique_ratio"</span>]
+    ai_ur    = ai_fp[<span class="str">"unique_ratio"</span>]
+    tgt_ur   = target_fp[<span class="str">"unique_ratio"</span>]
+
+    <span class="cm"># Normalize target position between human and AI poles</span>
+    rr_score = <span class="fn">_normalize</span>(tgt_rr, human_rr, ai_rr)   <span class="cm"># higher = more AI</span>
+    ur_score = <span class="fn">_normalize</span>(ai_ur,   tgt_ur,  human_ur)  <span class="cm"># lower unique = more AI</span>
+
+    <span class="kw">return</span> (rr_score * <span class="num">0.5</span> + ur_score * <span class="num">0.5</span>)
+
+<span class="kw">def</span> <span class="fn">_normalize</span>(val, lo, hi) -> float:
+    <span class="kw">if</span> abs(hi - lo) < <span class="num">1e-9</span>: <span class="kw">return</span> <span class="num">0.5</span>
+    <span class="kw">return</span> max(<span class="num">0</span>, min(<span class="num">1</span>, (val - lo) / (hi - lo)))
+</pre>
+    </div>
+
+    <div class="code-panel" id="tab-usage">
+<pre>
+<span class="cm"># ── Usage Example ─────────────────────────────────────────────────────────────</span>
+<span class="kw">from</span> detector <span class="kw">import</span> compute_fingerprint, score_ai_likelihood
+
+human_text = <span class="str">"""
+I honestly didn't know what to expect when I first started college.
+Everyone kept telling me it'd be the best years of my life, but at first
+it just felt overwhelming and kind of lonely, if I'm being honest.
+"""</span>
+
+ai_text = <span class="str">"""
+The transition to college life presents numerous opportunities for personal
+and academic development. Students are encouraged to engage actively with
+campus resources and to build meaningful connections with their peers.
+"""</span>
+
+unknown_text = <span class="str">"""
+Starting college can be both exciting and challenging. It is important for
+students to make use of available support systems and to maintain a healthy
+work-life balance throughout the academic year.
+"""</span>
+
+<span class="cm"># Compute fingerprints</span>
+N = <span class="num">3</span>   <span class="cm"># trigrams</span>
+human_fp  = <span class="fn">compute_fingerprint</span>(human_text, n=N)
+ai_fp     = <span class="fn">compute_fingerprint</span>(ai_text, n=N)
+target_fp = <span class="fn">compute_fingerprint</span>(unknown_text, n=N)
+
+<span class="cm"># Score</span>
+score = <span class="fn">score_ai_likelihood</span>(target_fp, human_fp, ai_fp)
+
+print(<span class="str">f"Human  — unique ratio: {human_fp['unique_ratio']:.3f}, repeat rate: {human_fp['repeat_rate']:.3f}"</span>)
+print(<span class="str">f"AI     — unique ratio: {ai_fp['unique_ratio']:.3f}, repeat rate: {ai_fp['repeat_rate']:.3f}"</span>)
+print(<span class="str">f"Target — unique ratio: {target_fp['unique_ratio']:.3f}, repeat rate: {target_fp['repeat_rate']:.3f}"</span>)
+print(<span class="str">f"\nAI Likelihood Score: {score:.1%}"</span>)
+print(<span class="str">f"Verdict: {'LIKELY AI-GENERATED' if score > 0.6 else 'LIKELY HUMAN-WRITTEN' if score < 0.4 else 'UNCERTAIN'}"</span>)
+
+<span class="cm"># Top repeated trigrams in target:</span>
+print(<span class="str">"\nTop repeated n-grams:"</span>)
+<span class="kw">for</span> ngram, count <span class="kw">in</span> target_fp[<span class="str">'top_ngrams'</span>]:
+    print(<span class="str">f"  '{ngram}' — {count}×"</span>)
+</pre>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── Rabin-Karp in JavaScript (mirrors the Python exactly) ─────────────────
+
+function strHash(s, mod) {
+  let h = 0;
+  for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) % mod;
+  return h + 1;
+}
+
+function modpow(base, exp, mod) {
+  let result = 1n;
+  let b = BigInt(base), e = BigInt(exp), m = BigInt(mod);
+  b %= m;
+  while (e > 0n) {
+    if (e % 2n === 1n) result = result * b % m;
+    e >>= 1n;
+    b = b * b % m;
+  }
+  return Number(result);
+}
+
+function modinv(a, mod) {
+  // Extended Euclidean
+  let [old_r, r] = [a, mod], [old_s, s] = [1, 0];
+  while (r !== 0) {
+    const q = Math.floor(old_r / r);
+    [old_r, r] = [r, old_r - q * r];
+    [old_s, s] = [s, old_s - q * s];
+  }
+  return ((old_s % mod) + mod) % mod;
+}
+
+function preprocess(text) {
+  return text.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
+}
+
+function rollingHashAll(tokens, n, base, mod) {
+  if (tokens.length < n) return [];
+  const th = tokens.map(t => strHash(t, mod));
+  const basePowN = modpow(base, n - 1, mod);
+
+  let h = 0;
+  for (let i = 0; i < n; i++) h = (h + th[i] * modpow(base, i, mod)) % mod;
+  const hashes = [h];
+  const inv = modinv(base, mod);
+
+  for (let i = 1; i <= tokens.length - n; i++) {
+    h = ((h - th[i - 1]) % mod + mod) % mod;
+    h = (h * inv) % mod;
+    h = (h + th[i + n - 1] * basePowN) % mod;
+    hashes.push(h);
+  }
+  return hashes;
+}
+
+function computeFingerprint(text, n, base, mod) {
+  const tokens = preprocess(text);
+  const hashes = rollingHashAll(tokens, n, base, mod);
+  if (!hashes.length) return null;
+
+  const counts = {};
+  for (const h of hashes) counts[h] = (counts[h] || 0) + 1;
+
+  const uniqueCount = Object.keys(counts).length;
+  const uniqueRatio = uniqueCount / hashes.length;
+  const repeated = Object.values(counts).filter(c => c > 1).length;
+  const repeatRate = repeated / uniqueCount;
+
+  // N-gram text counts
+  const ngrams = {};
+  for (let i = 0; i <= tokens.length - n; i++) {
+    const k = tokens.slice(i, i + n).join(' ');
+    ngrams[k] = (ngrams[k] || 0) + 1;
+  }
+  const topNgrams = Object.entries(ngrams).sort((a,b)=>b[1]-a[1]).slice(0, 10);
+
+  return { hashes, counts, uniqueRatio, repeatRate, uniqueCount, total: hashes.length, topNgrams, tokens };
+}
+
+function normalize(val, lo, hi) {
+  if (Math.abs(hi - lo) < 1e-9) return 0.5;
+  return Math.max(0, Math.min(1, (val - lo) / (hi - lo)));
+}
+
+function scoreAI(targetFp, humanFp, aiFp) {
+  const rrScore = normalize(targetFp.repeatRate, humanFp.repeatRate, aiFp.repeatRate);
+  const urScore = normalize(aiFp.uniqueRatio, targetFp.uniqueRatio, humanFp.uniqueRatio);
+  return rrScore * 0.5 + urScore * 0.5;
+}
+
+// ─── UI ─────────────────────────────────────────────────────────────────────
+
+document.getElementById('ngramSize').addEventListener('input', e => {
+  document.getElementById('ngramVal').textContent = e.target.value;
+});
+
+function switchTab(id) {
+  document.querySelectorAll('.code-tab').forEach((t,i) => {
+    t.classList.toggle('active', ['algo','detector','usage'][i] === id);
+  });
+  document.querySelectorAll('.code-panel').forEach(p => {
+    p.classList.toggle('active', p.id === 'tab-' + id);
+  });
+}
+
+function runAnalysis() {
+  const humanText  = document.getElementById('humanText').value.trim();
+  const aiText     = document.getElementById('aiText').value.trim();
+  const targetText = document.getElementById('targetText').value.trim();
+
+  if (!humanText || !aiText || !targetText) {
+    alert('Please fill in all three text fields.');
+    return;
+  }
+
+  const n    = parseInt(document.getElementById('ngramSize').value);
+  const base = parseInt(document.getElementById('hashBase').value);
+  const mod  = parseInt(document.getElementById('hashMod').value);
+
+  const humanFp  = computeFingerprint(humanText, n, base, mod);
+  const aiFp     = computeFingerprint(aiText, n, base, mod);
+  const targetFp = computeFingerprint(targetText, n, base, mod);
+
+  if (!humanFp || !aiFp || !targetFp) {
+    alert('One of the texts is too short to generate n-grams. Try a longer sample or smaller n.');
+    return;
+  }
+
+  const score = scoreAI(targetFp, humanFp, aiFp);
+  const pct = Math.round(score * 100);
+
+  // Show results
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Verdict
+  const scoreEl = document.getElementById('verdictScore');
+  const labelEl = document.getElementById('verdictLabel');
+  const descEl  = document.getElementById('verdictDesc');
+  scoreEl.textContent = pct + '%';
+  scoreEl.className = 'verdict-score ' + (pct >= 60 ? 'ai-score' : pct <= 40 ? 'human-score' : 'mid-score');
+
+  if (pct >= 65) {
+    labelEl.textContent = '⚠ LIKELY AI-GENERATED';
+    labelEl.style.color = 'var(--warn)';
+    descEl.textContent = `The target text's rolling-hash fingerprint is closer to the AI sample (repeat rate: ${(targetFp.repeatRate*100).toFixed(1)}%, unique ratio: ${(targetFp.uniqueRatio*100).toFixed(1)}%). AI text tends to reuse structural patterns more predictably.`;
+  } else if (pct <= 35) {
+    labelEl.textContent = '✓ LIKELY HUMAN-WRITTEN';
+    labelEl.style.color = 'var(--safe)';
+    descEl.textContent = `The target text's rolling-hash fingerprint is closer to the human sample (repeat rate: ${(targetFp.repeatRate*100).toFixed(1)}%, unique ratio: ${(targetFp.uniqueRatio*100).toFixed(1)}%). Human writing tends to be more structurally diverse.`;
+  } else {
+    labelEl.textContent = '~ UNCERTAIN / MIXED SIGNAL';
+    labelEl.style.color = 'var(--mid)';
+    descEl.textContent = `The target text falls between both samples. Consider using longer texts or different n-gram sizes for a clearer signal.`;
+  }
+
+  // Score bar
+  const fill = document.getElementById('scoreBarFill');
+  fill.style.width = '0%';
+  fill.style.background = pct >= 60 ? 'var(--warn)' : pct <= 40 ? 'var(--safe)' : 'var(--mid)';
+  setTimeout(() => fill.style.width = pct + '%', 50);
+
+  // Metrics
+  const mg = document.getElementById('metricsGrid');
+  mg.innerHTML = [
+    { val: targetFp.total, name: 'Total N-Grams' },
+    { val: targetFp.uniqueCount, name: 'Unique Hashes' },
+    { val: (targetFp.uniqueRatio * 100).toFixed(1) + '%', name: 'Unique Ratio' },
+    { val: (targetFp.repeatRate * 100).toFixed(1) + '%', name: 'Repeat Rate' },
+  ].map(m => `<div class="metric-card"><div class="metric-val">${m.val}</div><div class="metric-name">${m.name}</div></div>`).join('');
+
+  // Hash fingerprints
+  function renderHashes(fp, elId, referenceSet) {
+    const el = document.getElementById(elId);
+    const topHashes = fp.hashes.slice(0, 40);
+    el.innerHTML = topHashes.map(h => {
+      const repeated = fp.counts[h] > 1;
+      return `<span class="hash-tag ${repeated ? 'repeated' : ''}" title="${fp.counts[h]}×">${h.toString(16).padStart(5,'0')}</span>`;
+    }).join('');
+  }
+  renderHashes(humanFp, 'humanHashes');
+  renderHashes(aiFp, 'aiHashes');
+
+  // Top repeated n-grams
+  const ns = document.getElementById('ngramsSection');
+  const maxCount = targetFp.topNgrams[0]?.[1] || 1;
+  const rows = targetFp.topNgrams.map(([ngram, count]) => `
+    <div class="ngrams-row">
+      <div class="ngram-text">${ngram}</div>
+      <div class="ngram-bar-wrap"><div class="ngram-bar" style="width:${(count/maxCount*100).toFixed(0)}%"></div></div>
+      <div class="ngram-count">${count}×</div>
+    </div>`).join('');
+  ns.innerHTML = `<div class="panel-header"><span class="panel-title">Top Repeated N-Grams in Target Text</span></div>${rows}`;
+}
+</script>
+</body>
+</html>
